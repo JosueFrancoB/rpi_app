@@ -1,0 +1,27 @@
+{
+    "date_time": {
+        "time_zone": "America/Mexico_City",
+        "last_date": "2021-10-14 09:52:10"
+    },
+    "ssh_server": {
+        "user": "ubuntu",
+        "pass": "InDo2011"
+    },
+    "app": {
+        "port": "5000"
+    },
+    "app_functions": {
+        "hostapd": true,
+        "ssh": true,
+        "datetime": true,
+        "shutdown": true,
+        "reboot": true,
+        "check_wifi": true
+    },
+    "security": {
+        "type": "jwt_api",
+        "jwt_api_host": "192.168.0.12",
+        "jwt_api_port": "3032",
+        "jwt_api_endpoint": "/auth/validate"
+    }
+}

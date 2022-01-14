@@ -1,0 +1,701 @@
+openapi: 3.0.0
+info:
+  title: Rpi
+  version: 1.0.7
+  description: |
+    # Introduction
+    This API is for control of the raspberry and for config host access point.
+    
+    The purpose of this API is to be able to access the raspberry through an app and perform actions like these:
+    - Reboot and shutdown.
+    - Change raspberry date and time.
+    - Change host access point name and password.
+    - Get and set raspberry Time zone.
+    - Execute any command and get it output.
+
+    #### Requirements: 
+    - Raspberry must be have installed systemd for datetimectl
+
+    # App Settings
+
+    ```
+    "app":{
+        "port": "5000", // Port app running.
+    }
+    
+    ```
+
+    # Ssh Server Connection
+    This app connects to raspberry by ssh and configuration found in config.json, this field is required to app works successfully:
+
+    ```
+    "ssh_server":{
+        "host": "", // Ssh Host.
+        "port": "", // Ssh Port.
+        "user": "", // Username from host.
+        "pass": "", // Password from host.
+    }
+
+    ```
+
+    You can enable or disable any function of this app, the field app_functions is located in config.json:
+    ```
+    "app_functions": {
+        "hostapd": true,
+        "datetime": true,
+        "shutdown": true,
+        "reboot": true,
+        "check_wifi": true
+    }
+    ```
+    If not provide the field app_functions only ssh functions are enabled
+
+    If any of this fields is not in app_functions is disabled by default
+    
+  
+    # Host Access Point Settings
+    If hostapd is enabled require some configurations located in wifi_config.json:
+    
+    ```
+    {
+        "name": "" // Hostname for Wi-Fi access point.
+        "password": "", // Password for Wi-Fi accesspoint.
+        "subnet": "192.168.2.0" // Subnetwork for Wi-Fi accesspoint.
+        "ap_addr": "192.168.2.1", // IP address for Wi-Fi accesspoint.
+    }
+
+    ```
+
+    # Date Time Settings
+    This app save date time configuration and it found in config.json, this field is required if datetime is enabled in config.json:
+
+    ```
+    "date_time":{
+        "time_zone": "America/Mexico_City", // Time Zone from Raspberry.
+        "last_date": "2021-10-14 09:52:10"
+    }
+    ```
+
+    # Docker
+
+    ### If hostapd is enabled
+    - Require a volume aiming at /app/config like this:
+    ```
+    volumes:
+      - my_dir/app/config:/app/config 
+    ```
+    - Require run container in host mode like this.
+    ```
+    network_mode: "host"
+    ```
+
+    ### If datetime is enabled
+    - Require a volume like this:
+    ```
+    volumes:
+      - /etc/netplan:/app/netplan
+    ```
+
+    # Authentication
+    The routes of this app require an authentication configuration and it found in config.json
+
+    ```
+    "security":{
+        "jwt_api_host": "192.168.0.12",
+        "jwt_api_port": "3032",
+        "jwt_api_endpoint": "/auth/validate"
+    }
+    ```
+
+    If security is not in file config.json authentication is disabled or if any of this security fields is empty the authentication will be disable too
+
+    
+
+x-name: rpi
+  
+security:
+  - JWT Auth: []
+
+servers:
+  - url: http://localhost/reboot:5000
+    description: If used as a web service (company)
+  - url: http://container_name:port
+    description: If used as a container
+
+x-tagGroups:
+  - name: General
+    tags:
+      - Raspberry
+      - Date Time
+      - Host Access Point
+      - About
+
+paths:
+  /reboot:
+    post:
+      tags:
+        - Raspberry
+      summary: Reboot raspberry
+      responses:
+        '500':
+          $ref: '#/components/responses/500InternalServerError'
+        '401':
+          $ref: '#/components/responses/401Auth'
+        '200':
+          $ref: '#/components/responses/200RebootSuccessfully'
+  /shutdown:
+    post:
+      tags:
+        - Raspberry
+      summary: Shutdown raspberry
+      responses:
+        '500':
+          $ref: '#/components/responses/500InternalServerError'
+        '401':
+          $ref: '#/components/responses/401Auth'
+        '200':
+          $ref: '#/components/responses/200ShutdownSuccessfully'
+  /datetime:
+    patch:
+      tags:
+        - Date Time
+      summary: Update raspberry date and time
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Datetime'
+      responses:
+        '500':
+          $ref: '#/components/responses/500InternalServerError'
+        '401':
+          $ref: '#/components/responses/401Auth'
+        '400':
+          $ref: '#/components/responses/400InvalidDateTime'
+        '200':
+          $ref: '#/components/responses/200SetDateTime'
+        '202':
+          $ref: '#/components/responses/202DateTimeAlreadyUpdate'
+  /wifi:
+    get:
+      tags:
+        - Host Access Point
+      summary: Get Wi-Fi name and password
+      parameters:
+        - $ref: '#/components/parameters/ID'
+      responses:
+        '500':
+          $ref: '#/components/responses/500InternalServerError'
+        '401':
+          $ref: '#/components/responses/401Auth'
+        '200':
+          $ref: '#/components/responses/200GetWifiConfig'
+
+    patch:
+      tags:
+        - Host Access Point
+      summary: Update Wi-Fi name and password
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Wifi'
+      responses:
+        '500':
+          $ref: '#/components/responses/500InternalServerError'
+        '401':
+          $ref: '#/components/responses/401Auth'
+        '400':
+          $ref: '#/components/responses/400InvalidWifiData'
+        '200':
+          $ref: '#/components/responses/200SetWifiConfig'
+  /my-timezone:
+    get:
+      tags:
+        - Date Time
+      summary: Get my time zone with geolocation
+      responses:
+        '500':
+          $ref: '#/components/responses/500InternalServerError'
+        '502':
+          $ref: '#/components/responses/502ConnectionError'
+        '401':
+          $ref: '#/components/responses/401Auth'
+        '200':
+          $ref: '#/components/responses/200GetMyTimeZone'
+  /timezone:
+    get:
+      tags:
+        - Date Time
+      summary: Get available America time zones
+      responses:
+        '500':
+          $ref: '#/components/responses/500InternalServerError'
+        '401':
+          $ref: '#/components/responses/401Auth'
+        '200':
+          $ref: '#/components/responses/200GetTimeZone'
+
+    post:
+      tags:
+        - Date Time
+      summary: Set an specific time zone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Timezone'
+      responses:
+        '500':
+          $ref: '#/components/responses/500InternalServerError'
+        '401':
+          $ref: '#/components/responses/401Auth'
+        '400':
+          $ref: '#/components/responses/400InvalidTimeZone'
+        '200':
+          $ref: '#/components/responses/200SetTimeZone'
+  /command:
+    post:
+      tags:
+        - Raspberry
+      summary: Run command on raspberry
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                command:
+                  type: string
+                  description: Command you want to get output from or just run in raspberry
+                  example: ls
+                getoutput:
+                  type: string
+                  description: To get command output `Y` or if not write `N` or omit this field
+                  example: "Y"
+      responses:
+        '500':
+          $ref: '#/components/responses/500InternalServerError'
+        '401':
+          $ref: '#/components/responses/401Auth'
+        '400':
+          $ref: '#/components/responses/400InvalidCommand'
+        '200':
+          $ref: '#/components/responses/200SuccessfulCommandExecution'
+  /macaddr:
+    get:
+      tags:
+        - Raspberry
+      summary: Get mac address
+      responses:
+        '500':
+          $ref: '#/components/responses/500InternalServerError'
+        '401':
+          $ref: '#/components/responses/401Auth'
+        '200':
+          $ref: '#/components/responses/200GetMacAddress'
+  /scan-mac/{ipaddr}:
+    get:
+      tags:
+        - Raspberry
+      summary: Get mac address by IP
+      responses:
+        '500':
+          $ref: '#/components/responses/500InternalServerError'
+        '401':
+          $ref: '#/components/responses/401Auth'
+        '200':
+          $ref: '#/components/responses/200GetMacsAround'
+  /static-ip:
+    post:
+      tags:
+        - Raspberry
+      summary: Set Raspberry Static IP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaticIP'
+      responses:
+        '500':
+          $ref: '#/components/responses/500InternalServerError'
+        '401':
+          $ref: '#/components/responses/401Auth'
+        '400':
+          $ref: '#/components/responses/400InvalidNetworkData'
+        '200':
+          $ref: '#/components/responses/200SetStaticIP'
+  /about:
+    get:
+      tags:
+        - About
+      summary: Get name and version from this project
+      responses:
+        '200':
+          $ref: '#/components/responses/200GetAbout'
+  /wifi-conn:
+    get:
+      tags:
+        - Raspberry
+      summary: Check internet connection
+      responses:
+        '200':
+          $ref: '#/components/responses/200WifiConnStatus'
+
+components:
+  schemas:
+    Datetime:
+      type: object
+      properties:
+        date_time:
+          type: string
+          description: Date and time format `YYYY-MM-DD HH:II:SS`
+          example: "2021-10-25 12:40:20"
+    Wifi:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Min length `5 characters` and max length `32 characters` Valid characters `A-Za-z0-9_`
+          example: My_Network200
+        password:
+          type: string
+          description: Min length `8 characters` and max length is `63 characters` Valid characters `A-Za-z0-9@#$%^&+=-_.`
+          example: Pass123@#$%^&+=-_.
+    Timezone:
+        type: object
+        properties:
+          time_zone:
+            type: string
+            description: Time Zone to change on raspberry
+            example: 'America/Mexico_City'
+    StaticIP:
+      type: object
+      properties:
+        static_ip:
+          type: string
+          description: Static ip to change
+          example: '192.168.0.55'
+        interface:
+          type: string
+          description: Interface with new static ip `eth0` or `wlan0`
+          example: 'eth0'
+        gateway:
+          type: string
+          description: Gateway from network
+          example: '192.168.0.1'
+
+
+  responses:
+      200RebootSuccessfully:
+        description: Reboot Raspberry
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msg: 
+                  type: string
+                  example: Raspberry is restarting
+                msg_es: 
+                  type: string
+                  example: El raspberry se está reiniciando
+
+      200ShutdownSuccessfully:
+        description: Shutdown Raspberry
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msg: 
+                  type: string
+                  example: Raspberry was shutdown successfully
+                msg_es: 
+                  type: string
+                  example: El raspberry se apagó correctamente
+
+      200SetDateTime:
+        description: Date and time was updated
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msg: 
+                  type: string
+                  example: Datetime was updated successfully
+                msg_es: 
+                  type: string
+                  example: Fecha y hora actualizados correctamente
+
+      202DateTimeAlreadyUpdate:
+        description: Date and time are already up to date
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msg: 
+                  type: string
+                  example: Date and time are already up to date
+                msg_es: 
+                  type: string
+                  example: La fecha y la hora ya están actualizadas
+
+      400InvalidDateTime:
+        description: Date and time invalid format
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msg: 
+                  type: string
+                  example: Date and time invalid
+                msg_es: 
+                  type: string
+                  example: 'La fecha y la hora son inválidas'
+      
+      200GetWifiConfig:
+        description: Get name and password sucessfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: 
+                  type: string
+                  example: Hostap_25
+                password: 
+                  type: string
+                  example: host12345.-
+
+      200SetWifiConfig:
+        description: Wi-Fi data was updated
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msg: 
+                  type: string
+                  example: Wifi data was update successfully
+                msg_es: 
+                  type: string
+                  example: Los datos del internet se actualizaron correctamente
+
+      400InvalidWifiData:
+        description: Invalid Wi-Fi data
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msg: 
+                  type: string
+                  example: Wi-Fi data is invalid
+                msg_es: 
+                  type: string
+                  example: Los datos del internet no son válidos
+
+      200GetMyTimeZone:
+        description: Get my timezone 
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                timezone: 
+                  type: string
+                  example: America/Mexico_City
+      
+      502ConnectionError:
+        description: Connection Error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msg: 
+                  type: string
+                  example: An error has ocurred with wifi connection
+                msg_es:
+                  type: string
+                  example: Ha ocurrido un error con la conexion a internet
+
+      200GetTimeZone:
+        description: Get available America time zones
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                zones: 
+                  type: array
+                  example: ['America/Mexico_City', 'America/Monterrey']
+
+      200SetTimeZone:
+        description: Time zone was updated successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msg: 
+                  type: string
+                  example: Time zone was updated successfully
+                msg_es:
+                  type: string
+                  example: La zona horaria se actualizó correctamente
+      
+      400InvalidTimeZone:
+        description: Invalid Time Zone
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msg: 
+                  type: string
+                  example: Time zone is invalid
+                msg_es: 
+                  type: string
+                  example: La zona horaria no es valida
+
+      200SuccessfulCommandExecution:
+        description: Command was run successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cmd_output: 
+                  type: array
+                  example: ['dir', 'doc.txt']
+
+      400InvalidCommand:
+        description: Invalid Command
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msg: 
+                  type: string
+                  example: Command is invalid
+                msg_es: 
+                  type: string
+                  example: El comando no es valido
+      
+      200GetMacAddress:
+        description: Get mac address successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mac_addr: 
+                  type: string
+                  example: d2:34:ef:d3:fe:32
+
+      200GetMacsAround:
+        description: Mac address found
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mac_addr: 
+                  type: string
+                  example: d2:34:ef:d3:fe:32
+      
+      400InvalidNetworkData:
+        description: Invalid  Network Data 
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msg: 
+                  type: string
+                  example: Invalid Network Data
+                msg_es:
+                  type: string
+                  example: Los datos de la red no son validos
+
+      200SetStaticIP:
+        description: Static IP Updated
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msg: 
+                  type: string
+                  example: File with static ip was update successfully
+                msg_es:
+                  type: string
+                  example: El archivo con la ip estatica se actualizó correctamente
+
+      200GetAbout:
+        description: Get name and version from project
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: 
+                  type: string
+                  example: Rpi
+                version:
+                  type: string
+                  example: 1.0.0
+                  
+      200WifiConnStatus:
+        description: Internet connection
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msg: 
+                  type: string
+                  example: Has internet connection
+                msg_es:
+                  type: string
+                  example: Tienes conexión a internet
+                connection:
+                  type: bool
+                  example: True
+
+      401Auth:
+        description: Must be authenticated
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msg: 
+                  type: string
+                  example: Must be authenticated
+                msg_es:
+                  type: string
+                  example: Debe de autenticarse
+
+      500InternalServerError:
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msg: 
+                  type: string
+                  example: Internal server error
+                msg_es: 
+                  type: string
+                  example: Error interno del servidor

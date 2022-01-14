@@ -1,0 +1,120 @@
+trigger:
+- test
+
+stages:
+
+# API name and version validation and publish build artifact
+- stage: APIValidationAndPublish
+  displayName: API validation and publish
+  jobs:
+  - job: APIValidationAndPublish
+    pool: CBIN
+    steps:
+    - task: S3Download@1
+      inputs:
+        awsCredentials: 'AWS - AzureDevops-$(System.TeamProject)'
+        regionName: 'us-west-2'
+        bucketName: 'cbin.pipeline-scripts'
+        sourceFolder: 'python'
+        globExpressions: 'api_supervisor.py'
+        targetFolder: '$(Build.SourcesDirectory)'
+        flattenFolders: true
+
+    - task: PythonScript@0
+      displayName: 'Validating documentation and version'
+      inputs:
+        scriptSource: 'filePath'
+        scriptPath: '$(Build.SourcesDirectory)/api_supervisor.py'
+        pythonInterpreter: 'python3'
+        arguments: 'test'
+
+    - task: CopyFiles@2
+      inputs:
+        SourceFolder: '$(Build.SourcesDirectory)'
+        Contents: |
+          **/*
+          !azure-pipelines.yml
+          !test-azure-pipelines.yml
+          !.git/**/*
+          !.vs/**/*
+          !.vscode/**/*
+          !.gitignore
+          !api_supervisor.py
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishPipelineArtifact@1
+      inputs:
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+        artifactName: drop
+
+# Upload to ECR
+- stage: DeployECR
+  displayName: Deploy to ECR
+  jobs:
+  - deployment:
+    pool: CBIN
+    environment: 'Test'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - task: S3Download@1
+              displayName: 'S3 Download: cbin.pipeline-scripts'
+              inputs:
+                awsCredentials: 'AWS - AzureDevops-$(System.TeamProject)'
+                regionName: 'us-west-2'
+                bucketName: 'cbin.pipeline-scripts'
+                sourceFolder: python
+                globExpressions: 'set_data_ecr.py'
+                targetFolder: '$(Agent.BuildDirectory)/drop'
+                flattenFolders: true
+            - task: PythonScript@0
+              displayName: 'Set data for image tagging'
+              inputs:
+                scriptSource: 'filePath'
+                scriptPath: '$(Agent.BuildDirectory)/drop/set_data_ecr.py'
+                pythonInterpreter: 'python3'
+                arguments: 'test'
+
+            - task: Docker@2
+              displayName: build
+              inputs:
+                command: build
+                Dockerfile: '$(Agent.BuildDirectory)/drop/Dockerfile'
+                arguments: '-t $(cbin.image.name):$(cbin.image.tag)'
+            - task: ECRPushImage@1
+              displayName: 'Push Image'
+              inputs:
+                awsCredentials: 'AWS - AzureDevops-$(System.TeamProject)'
+                regionName: 'us-west-2'
+                sourceImageName: '$(cbin.image.name)'
+                sourceImageTag: '$(cbin.image.tag)'
+                repositoryName: '$(cbin.image.name)'
+                pushTag: '$(cbin.image.tag)'
+                autoCreateRepository: true
+
+
+# Register in App Manager Server
+- stage: RegisterInAppManagerServer
+  displayName: Register in App Manager Server
+  jobs:
+  - job: RegisterInAppManagerServer
+    pool: CBIN
+    steps:
+    - task: S3Download@1
+      inputs:
+        awsCredentials: 'AWS - AzureDevops-$(System.TeamProject)'
+        regionName: 'us-west-2'
+        bucketName: 'cbin.pipeline-scripts'
+        sourceFolder: 'python'
+        globExpressions: 'api_publisher.py'
+        targetFolder: '$(Agent.BuildDirectory)/drop'
+        flattenFolders: true
+
+    - task: PythonScript@0
+      displayName: 'Publishing to App Manager Server'
+      inputs:
+        scriptSource: 'filePath'
+        scriptPath: '$(Agent.BuildDirectory)/drop/api_publisher.py'
+        pythonInterpreter: 'python3'
+        arguments: 'test'

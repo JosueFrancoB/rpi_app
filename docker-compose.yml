@@ -1,0 +1,15 @@
+version: '3.4'
+
+services:
+    rpi:
+        privileged: true
+        container_name: rpi_app
+        ports:
+            - 5000:5000
+        # network_mode: "host"
+        build:
+            context: .
+            dockerfile: Dockerfile
+        volumes:
+            - ./app/config:/app/config 
+            - /etc/netplan:/app/netplan/
